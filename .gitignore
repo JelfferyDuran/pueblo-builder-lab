@@ -1,0 +1,14 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Dependencies (none required — three.js is vendored)
+node_modules/
+
+# Logs
+*.log
+
+# Local env / secrets
+.env
+.env.*

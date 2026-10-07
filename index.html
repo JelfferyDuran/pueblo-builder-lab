@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#a95f38" />
+  <meta name="description" content="Interactive second-grade Pueblo air-dry clay building guide with 3D exploded view." />
+  <title>Pueblo Builder Lab</title>
+  <link rel="stylesheet" href="styles.css?v=3" />
+    <script src="pueblo-assets/vendor/three.min.js?v=3"></script>
+  <script src="pueblo-assets/vendor/OrbitControls.global.js?v=3"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">SECOND GRADE • HISTORY PROJECT</p>
+      <h1>Pueblo Builder Lab</h1>
+      <p class="subtitle">Rotate it • explode it • build it one piece at a time • learn why it works</p>
+    </div>
+    <div class="due-pill" aria-label="Project due date">Due Oct. 22, 2026</div>
+  </header>
+
+  <main class="app-shell">
+    <nav class="mode-tabs" aria-label="App sections">
+          <button class="tab active" data-panel="builder" type="button">🧱 3D Builder</button>
+          <button class="tab" data-panel="build" type="button">🎮 Build Mode</button>
+          <button class="tab" data-panel="steps" type="button">🪜 Build Steps</button>
+          <button class="tab" data-panel="learn" type="button">🏜️ Learn</button>
+          <button class="tab" data-panel="reference" type="button">🖼️ Reference</button>
+        </nav>
+
+        <section id="panel-build" class="panel" aria-labelledby="build-heading">
+          <div class="build-hud">
+            <div class="build-hud-left">
+              <p class="section-kicker">BUILD MODE</p>
+              <h2 id="build-heading">Place the pieces to build your Pueblo</h2>
+            </div>
+            <div class="materials-hud" id="materialsHud" aria-label="Materials">
+              <span class="mat" data-mat="cardboard">📦 <b id="matCardboard">0</b></span>
+              <span class="mat" data-mat="clay">🧱 <b id="matClay">0</b></span>
+              <span class="mat" data-mat="twigs">🌿 <b id="matTwigs">0</b></span>
+              <span class="mat" data-mat="sand">🏜️ <b id="matSand">0</b></span>
+            </div>
+          </div>
+
+          <div class="build-stage">
+            <div class="viewer-wrap build-viewer" id="buildViewerWrap">
+              <canvas id="buildScene" aria-label="Build mode 3D Pueblo"></canvas>
+              <div id="buildLoading" class="viewer-message">Loading build mode…</div>
+              <div id="buildGhost" class="build-ghost" hidden></div>
+              <div class="build-progress" id="buildProgress">Placed 0 / 6</div>
+            </div>
+            <div class="build-tip" id="buildTip">Select a piece below, then tap <b>Place</b> to snap it in.</div>
+          </div>
+
+          <div class="build-bar" id="buildBar" aria-label="Build pieces">
+            <button class="build-slot" data-piece="base" type="button">
+              <span class="slot-icon">⬜</span><span class="slot-name">Base</span><span class="slot-cost">📦1</span>
+            </button>
+            <button class="build-slot" data-piece="main" type="button">
+              <span class="slot-icon">🟫</span><span class="slot-name">Main</span><span class="slot-cost">📦1 🧱1</span>
+            </button>
+            <button class="build-slot" data-piece="left" type="button">
+              <span class="slot-icon">🟨</span><span class="slot-name">Left</span><span class="slot-cost">📦1 🧱1</span>
+            </button>
+            <button class="build-slot" data-piece="right" type="button">
+              <span class="slot-icon">🟧</span><span class="slot-name">Right</span><span class="slot-cost">📦1 🧱1</span>
+            </button>
+            <button class="build-slot" data-piece="upper" type="button">
+              <span class="slot-icon">🟥</span><span class="slot-name">Upper</span><span class="slot-cost">📦1 🧱1</span>
+            </button>
+            <button class="build-slot" data-piece="top" type="button">
+              <span class="slot-icon">🟪</span><span class="slot-name">Top</span><span class="slot-cost">📦1 🧱1</span>
+            </button>
+            <button class="build-place" id="buildPlace" type="button" disabled>Place</button>
+                      </div>
+                    </section>
+
+                <section id="panel-builder" class="panel active" aria-labelledby="builder-heading">
+      <div class="builder-grid">
+        <section class="viewer-card">
+          <div class="viewer-heading">
+            <div>
+              <p class="section-kicker">INTERACTIVE MODEL</p>
+              <h2 id="builder-heading">Touch the Pueblo to explore it</h2>
+            </div>
+            <div class="view-buttons" aria-label="Camera presets">
+              <button id="frontView" type="button">Front</button>
+              <button id="sideView" type="button">Side</button>
+              <button id="topView" type="button">Top</button>
+              <button id="autoRotate" type="button" title="Slowly spin the model">🔁 Auto</button>
+            </div>
+          </div>
+
+          <div class="viewer-wrap" id="viewerWrap">
+            <canvas id="scene" aria-label="Rotatable 3D model of the Pueblo project"></canvas>
+            <div id="loading" class="viewer-message">Loading 3D model…</div>
+            <div id="fallback" class="fallback" hidden>
+              <div class="fallback-pueblo" aria-hidden="true">
+                <div class="f-block f-main"></div><div class="f-block f-left"></div><div class="f-block f-right"></div><div class="f-block f-upper"></div><div class="f-block f-top"></div>
+              </div>
+              <p><strong>3D library could not load.</strong><br />The building steps and diagrams still work. Connect the host PC to the internet once so the 3D library can load.</p>
+            </div>
+            <div class="viewer-hint">Drag = rotate • pinch/scroll = zoom • tap a room = select</div>
+          </div>
+
+          <div class="control-grid">
+            <label class="range-card">
+              <span><strong>Exploded view</strong><output id="explodeOut">0%</output></span>
+              <input id="explode" type="range" min="0" max="100" value="0" />
+              <small>Pulls the rooms apart so he can see how the layers fit together.</small>
+            </label>
+            <label class="range-card">
+              <span><strong>Build progress</strong><output id="progressOut">Complete</output></span>
+              <input id="progress" type="range" min="0" max="8" step="1" value="8" />
+              <small>Slide backward to rebuild the Pueblo one stage at a time.</small>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <label><input id="showLabels" type="checkbox" checked /> Labels</label>
+            <label><input id="showClay" type="checkbox" checked /> Clay shell</label>
+            <label><input id="showCore" type="checkbox" /> Cardboard core</label>
+            <button id="resetModel" type="button" class="primary">Reset model</button>
+          </div>
+        </section>
+
+        <aside class="inspector-card" aria-live="polite">
+          <p class="section-kicker">SELECTED PIECE</p>
+          <h2 id="partName">Main Front Room</h2>
+          <div id="partSize" class="dimension">8 × 3 × 2 in</div>
+          <p id="partDescription">The widest lower room. It creates a strong base for the rooms above it.</p>
+          <div class="lesson-box">
+            <span>💡 BUILDING THEORY</span>
+            <p id="partTheory">A wide base spreads the load. Larger pieces below and smaller pieces above make a stacked structure easier to balance.</p>
+          </div>
+          <div class="piece-tray" id="pieceTray" aria-label="Pueblo pieces"></div>
+          <div class="mini-spec">
+            <h3>Real model recipe</h3>
+            <p><strong>Core:</strong> recycled cardboard</p>
+            <p><strong>Surface:</strong> thin air-dry clay layer</p>
+            <p><strong>Details:</strong> twigs, sand, rocks</p>
+            <p><strong>Base:</strong> 12 × 16 in cardboard</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="panel-steps" class="panel" aria-labelledby="steps-heading">
+      <div class="steps-layout">
+        <div class="step-main">
+          <p class="section-kicker">CLICK-THROUGH BUILD MODE</p>
+          <h2 id="steps-heading">Build it like a construction set</h2>
+          <div class="step-number" id="stepNumber">1</div>
+          <h3 id="stepTitle">Make the project base</h3>
+          <p id="stepText">Cut a 12 × 16 inch rectangle from corrugated cardboard. Draw a faint center line to make positioning easier.</p>
+          <div class="step-why">
+            <strong>Why this matters:</strong>
+            <span id="stepWhy">A flat, stiff base keeps the project from twisting while wet clay dries.</span>
+          </div>
+          <div class="step-actions">
+            <button id="prevStep" type="button">← Previous</button>
+            <button id="readStep" type="button" aria-label="Read this step aloud">🔊 Read step</button>
+            <button id="showStep3D" type="button" class="secondary">Show this in 3D</button>
+            <button id="nextStep" type="button" class="primary">Next →</button>
+          </div>
+        </div>
+        <div class="step-rail" id="stepRail"></div>
+      </div>
+
+      <div class="measurement-card">
+        <h3>📏 Piece measurements</h3>
+        <div class="measure-grid">
+          <div><strong>Main front</strong><span>8 × 3 × 2 in</span></div>
+          <div><strong>Left front</strong><span>3 × 3 × 2 in</span></div>
+          <div><strong>Right front</strong><span>4 × 3 × 2 in</span></div>
+          <div><strong>Middle upper</strong><span>6 × 3 × 2 in</span></div>
+          <div><strong>Top room</strong><span>4 × 3 × 2 in</span></div>
+          <div><strong>Project base</strong><span>12 × 16 in</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-learn" class="panel" aria-labelledby="learn-heading">
+      <p class="section-kicker">LEARN WHILE BUILDING</p>
+      <h2 id="learn-heading">What this model teaches</h2>
+      <div class="learn-grid">
+        <article><div class="learn-icon">1</div><h3>Pueblo peoples</h3><p>Pueblo peoples have long lived in the American Southwest, including present-day New Mexico and Arizona. Pueblo communities continue today.</p></article>
+        <article><div class="learn-icon">2</div><h3>Adobe</h3><p>Many Pueblo buildings were made with adobe—earth mixed with water and often plant material—formed into walls or bricks and dried.</p></article>
+        <article><div class="learn-icon">3</div><h3>Flat roofs</h3><p>Flat roofs create usable terraces and make it possible to place additional rooms above lower rooms.</p></article>
+        <article><div class="learn-icon">4</div><h3>Stacked rooms</h3><p>Some Pueblo buildings contain connected rooms built in several levels. Our model uses simple blocks to demonstrate that idea.</p></article>
+        <article><div class="learn-icon">5</div><h3>Ladders</h3><p>Ladders help people move between roof levels. A small twig ladder makes this important feature easy to recognize.</p></article>
+        <article><div class="learn-icon">6</div><h3>Vigas</h3><p>Wooden roof beams can project from adobe walls. The short twigs on the model represent these structural beams.</p></article>
+      </div>
+
+      <div class="quiz-card">
+        <div>
+          <p class="section-kicker">QUICK CHECK</p>
+          <h3 id="quizQuestion">Why are the biggest model pieces on the bottom?</h3>
+          <p id="quizFeedback" class="quiz-feedback">Choose an answer.</p>
+        </div>
+        <div id="quizAnswers" class="quiz-answers"></div>
+        <button id="newQuestion" type="button">Next question</button>
+      </div>
+    </section>
+
+    <section id="panel-reference" class="panel" aria-labelledby="reference-heading">
+      <p class="section-kicker">PRINT / BUILD REFERENCES</p>
+      <h2 id="reference-heading">Keep these beside him while he builds</h2>
+      <div class="reference-grid">
+        <figure><img src="pueblo-assets/finished-pueblo.png" alt="Finished air-dry clay Pueblo model reference" /><figcaption>Finished target model</figcaption></figure>
+        <figure><img src="pueblo-assets/build-guide.png" alt="Air-dry clay Pueblo build guide" /><figcaption>Step-by-step build guide</figcaption></figure>
+        <figure><img src="pueblo-assets/facts-guide.png" alt="Pueblo facts and presentation guide" /><figcaption>Facts + presentation help</figcaption></figure>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <strong>Pueblo Builder Lab</strong> • designed for this school model using cardboard + air-dry clay
+  </footer>
+
+  <script type="module" src="app.js?v=3"></script>
+</body>
+</html>

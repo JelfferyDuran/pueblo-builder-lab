@@ -1,0 +1,8 @@
+services:
+  pueblo-builder:
+    build: .
+    image: pueblo-builder-lab:latest
+    container_name: pueblo-builder
+    ports:
+      - "3003:80"
+    restart: unless-stopped
