@@ -132,7 +132,7 @@ function initRewards(){
   loadRewardState();
   const dots=$('#questDots');if(dots&&!dots.children.length){steps.forEach((_,i)=>{const d=document.createElement('span');d.className='quest-dot';d.title='Build step '+(i+1);dots.appendChild(d)})}
   $('#soundToggle')?.addEventListener('click',()=>{rewardState.sound=!rewardState.sound;saveRewardState();updateRewardUI();if(rewardState.sound)playRewardTone('star')});
-  $('#rewardReset')?.addEventListener('click',()=>{if(!confirm('Reset stars, XP, badges, and completed build steps?'))return;rewardState={xp:0,stars:0,streak:0,badges:[],claimed:{},completedSteps:[],sound:true};saveRewardState();updateRewardUI();showRewardToast('Quest reset','Fresh start — build it again!')});
+  $('#rewardReset')?.addEventListener('click',()=>{if(!confirm('Reset stars, XP, badges, completed steps, and the digital build?'))return;rewardState={xp:0,stars:0,streak:0,badges:[],claimed:{},completedSteps:[],sound:true};try{localStorage.removeItem('pbq_buildPlaced');localStorage.removeItem('pb_celebrated')}catch(e){}saveRewardState();updateRewardUI();showRewardToast('Quest reset','Fresh start — build it again!');setTimeout(()=>location.reload(),650)});
   $('#completeStep')?.addEventListener('click',()=>{
     if(rewardState.completedSteps.includes(currentStep)){showRewardToast('Step already complete ✓','Choose the next step when you are ready.');return;}
     rewardState.completedSteps.push(currentStep);rewardState.completedSteps.sort((a,b)=>a-b);saveRewardState();
