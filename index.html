@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#a95f38" />
   <meta name="description" content="Interactive second-grade Pueblo air-dry clay building guide with 3D exploded view." />
   <title>Pueblo Builder Lab</title>
-  <link rel="stylesheet" href="styles.css?v=4" />
-    <script src="pueblo-assets/vendor/three.min.js?v=4"></script>
-  <script src="pueblo-assets/vendor/OrbitControls.global.js?v=4"></script>
+  <link rel="stylesheet" href="styles.css?v=5" />
+    <script src="pueblo-assets/vendor/three.min.js?v=5"></script>
+  <script src="pueblo-assets/vendor/OrbitControls.global.js?v=5"></script>
 </head>
 <body>
   <header class="topbar">
@@ -19,6 +19,41 @@
     </div>
     <div class="due-pill" aria-label="Project due date">Due Oct. 22, 2026</div>
   </header>
+
+  <section class="reward-shell" aria-label="Builder rewards">
+    <div class="reward-hud">
+      <div class="builder-profile">
+        <div class="builder-avatar" aria-hidden="true">🧱</div>
+        <div class="builder-copy">
+          <span class="reward-label">BUILDER RANK</span>
+          <strong id="builderRank">Adobe Apprentice</strong>
+          <div class="xp-track" aria-label="Experience progress">
+            <div id="xpFill" class="xp-fill" style="width:0%"></div>
+          </div>
+          <small id="xpText">0 XP • 100 XP to next rank</small>
+        </div>
+      </div>
+
+      <div class="reward-stats">
+        <div class="reward-stat"><span aria-hidden="true">⭐</span><div><b id="starCount">0</b><small>Stars</small></div></div>
+        <div class="reward-stat"><span aria-hidden="true">🔥</span><div><b id="streakCount">0</b><small>Streak</small></div></div>
+        <div class="reward-stat"><span aria-hidden="true">🏅</span><div><b id="badgeCount">0</b><small>Badges</small></div></div>
+      </div>
+
+      <div class="reward-actions">
+        <button id="soundToggle" type="button" class="sound-toggle" aria-pressed="true">🔊 Rewards on</button>
+        <button id="rewardReset" type="button" class="reward-reset">↺ Reset quest</button>
+      </div>
+    </div>
+    <div class="quest-strip">
+      <div>
+        <span class="reward-label">CURRENT QUEST</span>
+        <strong id="questTitle">Lay the foundation</strong>
+      </div>
+      <div id="questDots" class="quest-dots" aria-label="Quest progress"></div>
+      <div class="quest-reward">Next reward <strong id="nextReward">+25 XP ⭐</strong></div>
+    </div>
+  </section>
 
   <main class="app-shell">
     <nav class="mode-tabs" aria-label="App sections">
@@ -41,6 +76,15 @@
               <span class="mat" data-mat="twigs">🌿 <b id="matTwigs">0</b></span>
               <span class="mat" data-mat="sand">🏜️ <b id="matSand">0</b></span>
             </div>
+          </div>
+
+          <div class="build-mission" id="buildMission">
+            <div>
+              <span class="reward-label">ACTIVE BUILD MISSION</span>
+              <strong id="buildMissionTitle">Place the foundation board</strong>
+              <p id="buildMissionHint">Start low and wide. A strong base keeps every level above it stable.</p>
+            </div>
+            <div class="mission-prize"><span>REWARD</span><b>+25 XP</b><em>⭐ Builder Star</em></div>
           </div>
 
           <div class="build-stage">
@@ -172,6 +216,7 @@
             <button id="prevStep" type="button">← Previous</button>
             <button id="readStep" type="button" aria-label="Read this step aloud">🔊 Read step</button>
             <button id="showStep3D" type="button" class="secondary">Show this in 3D</button>
+            <button id="completeStep" type="button" class="quest-complete">⭐ I BUILT THIS!</button>
             <button id="nextStep" type="button" class="primary">Next →</button>
           </div>
         </div>
@@ -229,10 +274,13 @@
     </section>
   </main>
 
+  <div id="rewardToast" class="reward-toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+  <div id="confettiLayer" class="confetti-layer" aria-hidden="true"></div>
+
   <footer>
     <strong>Pueblo Builder Lab</strong> • designed for this school model using cardboard + air-dry clay
   </footer>
 
-  <script type="module" src="app.js?v=4"></script>
+  <script type="module" src="app.js?v=5"></script>
 </body>
 </html>
