@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#a95f38" />
   <meta name="description" content="Interactive second-grade Pueblo air-dry clay building guide with 3D exploded view." />
   <title>Pueblo Builder Lab</title>
-  <link rel="stylesheet" href="styles.css?v=3" />
-    <script src="pueblo-assets/vendor/three.min.js?v=3"></script>
-  <script src="pueblo-assets/vendor/OrbitControls.global.js?v=3"></script>
+  <link rel="stylesheet" href="styles.css?v=4" />
+    <script src="pueblo-assets/vendor/three.min.js?v=4"></script>
+  <script src="pueblo-assets/vendor/OrbitControls.global.js?v=4"></script>
 </head>
 <body>
   <header class="topbar">
@@ -101,6 +101,7 @@
               </div>
               <p><strong>3D library could not load.</strong><br />The building steps and diagrams still work. Connect the host PC to the internet once so the 3D library can load.</p>
             </div>
+            <div id="tourCaption" class="tour-caption" hidden></div>
             <div class="viewer-hint">Drag = rotate • pinch/scroll = zoom • tap a room = select</div>
           </div>
 
@@ -122,6 +123,15 @@
             <label><input id="showClay" type="checkbox" checked /> Clay shell</label>
             <label><input id="showCore" type="checkbox" /> Cardboard core</label>
             <button id="resetModel" type="button" class="primary">Reset model</button>
+          </div>
+
+          <div class="time-row" aria-label="Time of day">
+            <span class="time-label">Time of day</span>
+            <button class="time-btn active" data-time="day" type="button">☀️ Day</button>
+            <button class="time-btn" data-time="dawn" type="button">🌅 Dawn</button>
+            <button class="time-btn" data-time="sunset" type="button">🌇 Sunset</button>
+            <button class="time-btn" data-time="night" type="button">🌙 Night</button>
+            <button id="tourBtn" type="button" class="tour-btn">🎬 Take a tour</button>
           </div>
         </section>
 
@@ -194,13 +204,17 @@
       </div>
 
       <div class="quiz-card">
-        <div>
-          <p class="section-kicker">QUICK CHECK</p>
-          <h3 id="quizQuestion">Why are the biggest model pieces on the bottom?</h3>
-          <p id="quizFeedback" class="quiz-feedback">Choose an answer.</p>
+        <div class="quiz-top">
+          <div>
+            <p class="section-kicker">PUEBLO CHALLENGE</p>
+            <h3 id="quizQuestion">Why are the biggest model pieces on the bottom?</h3>
+            <p id="quizFeedback" class="quiz-feedback">Choose an answer.</p>
+          </div>
+          <div class="quiz-score"><span id="quizScore">0</span>/8</div>
         </div>
+        <p id="quizProgress" class="quiz-progress">Question 1 of 8</p>
         <div id="quizAnswers" class="quiz-answers"></div>
-        <button id="newQuestion" type="button">Next question</button>
+        <button id="newQuestion">Next question</button>
       </div>
     </section>
 
@@ -219,6 +233,6 @@
     <strong>Pueblo Builder Lab</strong> • designed for this school model using cardboard + air-dry clay
   </footer>
 
-  <script type="module" src="app.js?v=3"></script>
+  <script type="module" src="app.js?v=4"></script>
 </body>
 </html>

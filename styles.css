@@ -40,3 +40,17 @@ button,input{font:inherit}button{cursor:pointer;color:inherit}button:focus-visib
 .build-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#ffd27a;border:1px solid #ffd27a;border-radius:14px;padding:14px 22px;font-weight:900;font-size:1.1rem;z-index:6;text-align:center;pointer-events:none;animation:build-pop .5s cubic-bezier(.2,.8,.4,1)}
 @keyframes build-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 @media(max-width:640px){.build-viewer{height:390px}.build-bar{flex-wrap:nowrap}.build-slot{min-width:72px}}
+/* ===== Time of day + guided tour ===== */
+.time-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+.time-label{font-size:.8rem;font-weight:800;letter-spacing:.06em;color:var(--muted);margin-right:2px}
+.time-btn{border:1px solid var(--line);background:rgba(255,255,255,.7);border-radius:999px;min-height:38px;padding:7px 14px;font-weight:750;font-size:.9rem;transition:transform .12s,background .12s,border-color .12s}
+.time-btn:hover{transform:translateY(-2px)}
+.time-btn.active{background:#4b2b1d;color:#fff;border-color:#4b2b1d}
+.tour-btn{margin-left:auto;border:1px solid #c98f2f;background:linear-gradient(180deg,#ffe3ad,#f2c166);color:#4b2b1d;border-radius:999px;min-height:38px;padding:7px 16px;font-weight:850;box-shadow:0 2px 0 #c98f2f}
+.tour-btn:active{transform:translateY(2px);box-shadow:0 0 0 #c98f2f}
+.tour-caption{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);max-width:88%;background:rgba(30,22,15,.85);color:#fff;border:1px solid rgba(255,210,122,.45);border-radius:12px;padding:10px 16px;font-size:.95rem;font-weight:700;text-align:center;z-index:6;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+/* ===== Pueblo Challenge quiz (scored) ===== */
+.quiz-card{display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.quiz-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.quiz-score{flex:0 0 auto;background:#4b2b1d;color:#ffd27a;border-radius:14px;padding:8px 14px;font-weight:900;font-size:1.1rem;white-space:nowrap}
+.quiz-progress{font-size:.8rem;font-weight:750;color:var(--muted);margin:0}

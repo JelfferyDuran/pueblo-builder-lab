@@ -24,19 +24,25 @@ const quizzes = [
   { q:'Why are the biggest model pieces on the bottom?', a:['To make them harder to see','To create a wider, more stable base','Because clay only works near the ground'], correct:1, explain:'Correct: a wider lower level supports the upper pieces and helps the model stay balanced.' },
   { q:'Why do we use cardboard inside the air-dry clay?', a:['It makes a lightweight structural core','It makes the clay dry forever','It is historically the same as adobe'], correct:0, explain:'Correct: cardboard gives the school model its shape without making it a heavy solid block of clay.' },
   { q:'What does the ladder help explain?', a:['How roof levels could be reached','How adobe was painted','How sand was collected'], correct:0, explain:'Correct: ladders are an important visual clue showing movement between different levels.' },
-  { q:'What are the little wooden pieces sticking from the wall meant to represent?', a:['Vigas / roof beams','Fence posts','Cooking sticks'], correct:0, explain:'Correct: they represent wooden roof beams, often called vigas.' }
+  { q:'What are the little wooden pieces sticking from the wall meant to represent?', a:['Vigas / roof beams','Fence posts','Cooking sticks'], correct:0, explain:'Correct: they represent wooden roof beams, often called vigas.' },
+  { q:'What is adobe mostly made from?', a:['Earth mixed with water and plant material','Melted plastic','Crushed stone and metal'], correct:0, explain:'Correct: adobe is earth (clay and sand) mixed with water and often straw or plant fiber, then dried.' },
+  { q:'Why do many Pueblo buildings have flat roofs?', a:['They create usable terraces and let you build rooms above','Rain slides off faster that way','Flat roofs are the only shape clay can make'], correct:0, explain:'Correct: flat roofs become terraces and allow additional rooms to be stacked on top.' },
+  { q:'Where do Pueblo peoples live today?', a:['The American Southwest, like New Mexico and Arizona','The middle of the ocean','The frozen north'], correct:0, explain:'Correct: Pueblo communities continue today across the American Southwest, especially New Mexico and Arizona.' },
+  { q:'Why does each level get smaller as the building gets taller?', a:['It makes a stable pyramid-like shape','Small rooms are easier to paint','The clay runs out at the top'], correct:0, explain:'Correct: smaller upper levels keep weight near the center and lower the model’s center of mass.' }
 ];
 
 let selectedPiece = 'main';
 let currentStep = 0;
 let quizIndex = 0;
+let quizScore = 0;
+let quizDone = false;
 let sceneApi = null;
 let autoRotate = false;
 
 /* ---------- Read-aloud (free browser speech) ---------- */
 function speak(text){
   if(!('speechSynthesis' in window)){ try{new (window.AudioContext||window.webkitAudioContext)}catch(e){return;} }
-  try{ window.speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=.92; u.pitch=1.02; window.speechSynthesis.speak(u); }catch(e){}
+  try{ window.speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=.92; u.pitch=1.02; u.onerror=function(){}; window.speechSynthesis.speak(u); }catch(e){}
 }
 function readCurrentStep(){
   const s=steps[currentStep];
@@ -48,6 +54,41 @@ function celebrate(){
   el.innerHTML='🎉';
   document.body.appendChild(el); requestAnimationFrame(()=>el.classList.add('boom'));
   setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 1600);
+}
+
+/* ============ Procedural textures (no external assets) ============ */
+function hexToRgb(hex){
+  const n=parseInt(hex,16);
+  return [(n>>16)&255,(n>>8)&255,n&255];
+}
+function shade(hex, amt){ // amt in [-1,1]
+  const [r,g,b]=hexToRgb(hex);
+  const adj=(c)=> Math.round(amt>=0 ? c+(255-c)*amt : c*(1+amt));
+  return `rgb(${adj(r)},${adj(g)},${adj(b)})`;
+}
+function makeTexture(size, baseHex, opts={}){
+  const c=document.createElement('canvas'); c.width=c.height=size;
+  const g=c.getContext('2d');
+  g.fillStyle='#'+baseHex; g.fillRect(0,0,size,size);
+  const speckles=opts.speckles||1200, variance=opts.variance||0.16, strata=!!opts.strata, grain=!!opts.grain, r=opts.r||4;
+  for(let i=0;i<speckles;i++){
+    const x=Math.random()*size, y=Math.random()*size, rr=.5+Math.random()*r;
+    g.globalAlpha=.06+Math.random()*.14;
+    g.fillStyle=shade(baseHex,(Math.random()-.5)*variance*2);
+    g.beginPath(); g.arc(x,y,rr,0,Math.PI*2); g.fill();
+  }
+  g.globalAlpha=1;
+  if(strata){
+    g.strokeStyle='rgba(55,32,18,.10)';
+    for(let i=0;i<9;i++){ const y=Math.random()*size; g.lineWidth=1+Math.random()*2; g.beginPath(); g.moveTo(0,y); g.lineTo(size,y+(Math.random()-.5)*6); g.stroke(); }
+  }
+  if(grain){
+    g.strokeStyle='rgba(38,22,10,.12)';
+    for(let i=0;i<40;i++){ const y=Math.random()*size; g.lineWidth=.6+Math.random(); g.beginPath(); g.moveTo(0,y); g.lineTo(size,y+(Math.random()-.5)*2); g.stroke(); }
+  }
+  const tex=new THREE.CanvasTexture(c);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  return tex;
 }
 
 function initTabs(){
@@ -154,6 +195,11 @@ function initBuilderControls(){
     $('#explode').value='0'; $('#progress').value='8'; $('#showLabels').checked=true; $('#showClay').checked=true; $('#showCore').checked=false;
     updateExplode();updateProgress();sceneApi?.setLabels(true);sceneApi?.setClay(true);sceneApi?.setCore(false);sceneApi?.view('front');selectPiece('main');
   });
+  $$('.time-btn').forEach(b=>b.addEventListener('click',()=>{
+    sceneApi?.setTimeOfDay(b.dataset.time);
+    try{localStorage.setItem('pb_time',b.dataset.time)}catch(e){}
+  }));
+  $('#tourBtn').addEventListener('click',()=>sceneApi?.toggleTour());
   try{
     if(localStorage.getItem('pb_explode'))$('#explode').value=localStorage.getItem('pb_explode');
     if(localStorage.getItem('pb_progress'))$('#progress').value=localStorage.getItem('pb_progress');
@@ -163,25 +209,53 @@ function initBuilderControls(){
   }catch(e){}
 }
 
+/* ---------- Scored Pueblo Challenge quiz ---------- */
 function initQuiz(){
-  $('#newQuestion').addEventListener('click',()=>{quizIndex=(quizIndex+1)%quizzes.length;renderQuiz();});
+  $('#newQuestion').addEventListener('click',()=>{
+    if(quizDone){ quizIndex=0; quizScore=0; quizDone=false; $('#newQuestion').textContent='Next question'; renderQuiz(); return; }
+    const wrap=$('#quizAnswers');
+    if(!wrap.dataset.answered){ $('#quizFeedback').textContent='Pick an answer first!'; return; }
+    quizIndex++;
+    if(quizIndex>=quizzes.length){ showQuizResult(); return; }
+    renderQuiz();
+  });
   renderQuiz();
 }
 function renderQuiz(){
-  const q=quizzes[quizIndex]; $('#quizQuestion').textContent=q.q; $('#quizFeedback').textContent='Choose an answer.';
-  const wrap=$('#quizAnswers'); wrap.innerHTML='';
+  const q=quizzes[quizIndex];
+  $('#quizQuestion').textContent=q.q;
+  $('#quizFeedback').textContent='Choose an answer.';
+  $('#quizScore').textContent=String(quizScore);
+  $('#quizProgress').textContent=`Question ${quizIndex+1} of ${quizzes.length}`;
+  $('#newQuestion').textContent='Next question';
+  const wrap=$('#quizAnswers'); wrap.innerHTML=''; wrap.dataset.answered='';
   q.a.forEach((answer,i)=>{
     const b=document.createElement('button'); b.type='button'; b.className='answer-btn'; b.textContent=answer;
     b.addEventListener('click',()=>{
+      if(wrap.dataset.answered) return;
+      wrap.dataset.answered='1';
       $$('.answer-btn',wrap).forEach(x=>x.disabled=true);
-      if(i===q.correct){b.classList.add('correct');$('#quizFeedback').textContent=q.explain;speak(q.explain);}
-      else{b.classList.add('wrong');wrap.children[q.correct].classList.add('correct');$('#quizFeedback').textContent='Not quite. The highlighted answer is the building idea to remember.';speak('Not quite. The highlighted answer is the one to remember.');}
+      if(i===q.correct){ b.classList.add('correct'); quizScore++; $('#quizScore').textContent=String(quizScore); $('#quizFeedback').textContent=q.explain; speak(q.explain); }
+      else { b.classList.add('wrong'); wrap.children[q.correct].classList.add('correct'); $('#quizFeedback').textContent='Not quite. The highlighted answer is the idea to remember.'; speak('Not quite. The highlighted answer is the one to remember.'); }
     }); wrap.appendChild(b);
   });
   const readBtn=document.createElement('button'); readBtn.type='button'; readBtn.className='read-quiz'; readBtn.textContent='🔊 Read question';
   readBtn.addEventListener('click',()=>speak(`${q.q} ${q.a.join(' ')}`)); wrap.appendChild(readBtn);
 }
+function showQuizResult(){
+  quizDone=true;
+  const stars = quizScore>=8 ? '🌟🌟🌟' : quizScore>=6 ? '🌟🌟' : quizScore>=3 ? '🌟' : '🌱';
+  $('#quizQuestion').textContent = `You scored ${quizScore} out of ${quizzes.length}!`;
+  $('#quizFeedback').textContent = `${stars} ${quizScore>=6?'Great job!':'Nice try — play again to beat it.'}`;
+  $('#quizProgress').textContent='Complete';
+  $('#quizScore').textContent=String(quizScore);
+  $('#quizAnswers').innerHTML='';
+  $('#newQuestion').textContent='↺ Try again';
+  if(quizScore>=6) celebrate();
+  speak(`You scored ${quizScore} out of ${quizzes.length}. ${quizScore>=6?'Great job!':'Nice try, play again to beat it.'}`);
+}
 
+/* ============ 3D scene ============ */
 async function init3D(){
   const wrap=$('#viewerWrap'), canvas=$('#scene'), loading=$('#loading'), fallback=$('#fallback');
   const THREE=window.THREE, OrbitControls=window.THREE?.OrbitControls;
@@ -189,18 +263,47 @@ async function init3D(){
   try{
     const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-    const scene=new THREE.Scene(); scene.fog=new THREE.Fog(0xded8c8,29,47);
+    const scene=new THREE.Scene();
     const camera=new THREE.PerspectiveCamera(38,1,.1,100);camera.position.set(17,11,19);
     const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.target.set(.5,2.1,0);controls.minDistance=10;controls.maxDistance=34;controls.maxPolarAngle=Math.PI*.49;
-    scene.add(new THREE.HemisphereLight(0xfffbef,0x635342,2.15));
-    const sun=new THREE.DirectionalLight(0xffffff,2.55);sun.position.set(-8,18,11);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
+
+    /* --- Day / night sky state --- */
+    const TIMES={
+      dawn:  { sky:0xdcb585, fog:0xcfaa83, sun:[14,7,16],   sunColor:0xffc98a, sunInt:1.9,  hemi:1.25, stars:0.0,  moon:0.0 },
+      day:   { sky:0x9cc7e0, fog:0xd6c6ab, sun:[-8,18,11],  sunColor:0xffffff, sunInt:2.55, hemi:2.15, stars:0.0,  moon:0.0 },
+      sunset:{ sky:0xd9825a, fog:0xc69472, sun:[-22,4,-5],  sunColor:0xff8a50, sunInt:2.0,  hemi:1.2,  stars:0.15, moon:0.0 },
+      night: { sky:0x0a0f1e, fog:0x0b1324, sun:[6,24,9],    sunColor:0x9db0d8, sunInt:0.45, hemi:0.45, stars:1.0,  moon:0.8 }
+    };
+    const curSky=new THREE.Color(TIMES.day.sky), curFog=new THREE.Color(TIMES.day.fog);
+    const curSunPos=new THREE.Vector3(...TIMES.day.sun);
+    let curSunInt=TIMES.day.sunInt, curHemi=TIMES.day.hemi, curStars=0, curMoon=0, targetTime=null;
+    scene.background=curSky; scene.fog=new THREE.Fog(curFog,29,47);
+
+    const hemi=new THREE.HemisphereLight(0xfffbef,0x635342,curHemi); scene.add(hemi);
+    const sun=new THREE.DirectionalLight(0xffffff,curSunInt);sun.position.copy(curSunPos);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
     const rim=new THREE.DirectionalLight(0xffd9b3,.6);rim.position.set(12,7,-12);scene.add(rim);
 
-    const sandMat=new THREE.MeshStandardMaterial({color:0xc8ab78,roughness:1});
-    const clayMat=new THREE.MeshStandardMaterial({color:0xb36b43,roughness:.98});
-    const claySelected=new THREE.MeshStandardMaterial({color:0xd08a60,roughness:.92,emissive:0x2f180d,emissiveIntensity:.2});
+    /* stars */
+    const starGeo=new THREE.BufferGeometry(); const starPos=[];
+    for(let i=0;i<700;i++){ const r=40+Math.random()*6, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+      starPos.push(r*Math.sin(ph)*Math.cos(th), r*Math.cos(ph), r*Math.sin(ph)*Math.sin(th)); }
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos,3));
+    const starMat=new THREE.PointsMaterial({color:0xffffff,size:1.8,sizeAttenuation:false,transparent:true,opacity:0,fog:false,depthWrite:false});
+    const stars=new THREE.Points(starGeo,starMat); scene.add(stars);
+    /* moon */
+    const moon=new THREE.Mesh(new THREE.SphereGeometry(1.4,20,20), new THREE.MeshBasicMaterial({color:0xe8ecf4,transparent:true,opacity:0}));
+    moon.position.set(-11,20,-14); moon.visible=false; scene.add(moon);
+
+    /* --- Procedural materials --- */
+    const clayTex=makeTexture(256,'b36b43',{speckles:1500,variance:.18,strata:true,r:5});
+    const sandTex=makeTexture(256,'c8ab78',{speckles:1800,variance:.12,r:3}); sandTex.repeat.set(7,8);
+    const woodTex=makeTexture(128,'5c3c27',{grain:true,speckles:300,variance:.1,r:2});
+
+    const sandMat=new THREE.MeshStandardMaterial({map:sandTex,roughness:1});
+    const clayMat=new THREE.MeshStandardMaterial({map:clayTex,roughness:.98});
+    const claySelected=new THREE.MeshStandardMaterial({map:clayTex,roughness:.92,emissive:0x2f180d,emissiveIntensity:.2});
     const coreMat=new THREE.MeshStandardMaterial({color:0xb18457,roughness:.95,transparent:true,opacity:.8});
-    const woodMat=new THREE.MeshStandardMaterial({color:0x5c3c27,roughness:1});
+    const woodMat=new THREE.MeshStandardMaterial({map:woodTex,roughness:1});
     const darkMat=new THREE.MeshStandardMaterial({color:0x1d1713,roughness:1});
     const stoneMats=[0x766f65,0x9a8268,0xc0a37f].map(c=>new THREE.MeshStandardMaterial({color:c,roughness:1}));
     const greenMat=new THREE.MeshStandardMaterial({color:0x536146,roughness:1});
@@ -234,6 +337,42 @@ async function init3D(){
     const doorsWindows=[];
     function opening(x,y,z,w,h){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,.09),darkMat);m.position.set(x,y,z);model.add(m);doorsWindows.push(m);return m;}
     opening(.1,.72,-1.545,1.25,1.45);opening(-2.5,1.15,-1.545,.68,.68);opening(2.55,1.15,-1.545,.68,.68);opening(.15,3.22,-1.43,.68,.68);opening(2.15,5.22,-1.34,.68,.68);
+
+    /* roof parapets (low adobe walls around each flat roof) */
+    function addParapets(){
+      pieces.forEach(p=>{
+        const [w,h,d]=p.scale, [px,py,pz]=p.pos, top=py+h/2, ph=0.16, t=0.09;
+        const wall=(len,x,z,rotY)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(len,ph,t),clayMat); m.position.set(x,top+ph/2,z); m.rotation.y=rotY; m.castShadow=true; model.add(m); detailObjects.push(m); };
+        wall(w, px, pz+d/2-t/2, 0);
+        wall(w, px, pz-d/2+t/2, 0);
+        wall(d, px+w/2-t/2, pz, Math.PI/2);
+        wall(d, px-w/2+t/2, pz, Math.PI/2);
+      });
+    }
+    addParapets();
+
+    /* horno — beehive bread oven */
+    function addHorno(){
+      const g=new THREE.Group();
+      const dome=new THREE.Mesh(new THREE.SphereGeometry(.85,20,14,0,Math.PI*2,0,Math.PI/2),clayMat); dome.scale.set(1,.82,1); dome.castShadow=true; g.add(dome);
+      const chim=new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,.5,10),clayMat); chim.position.set(.15,.55,0); chim.castShadow=true; g.add(chim);
+      const door=new THREE.Mesh(new THREE.BoxGeometry(.34,.4,.12),darkMat); door.position.set(0,.22,.72); g.add(door);
+      g.position.set(7.4,.18,4.7); model.add(g); detailObjects.push(g);
+    }
+    addHorno();
+
+    /* kiva — round ceremonial room with entry ladder */
+    function addKiva(){
+      const g=new THREE.Group();
+      const cyl=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.45,.55,24),clayMat); cyl.castShadow=true; cyl.receiveShadow=true; g.add(cyl);
+      const l=new THREE.Group();
+      [-.42,.42].forEach(x=>{ const rail=new THREE.Mesh(new THREE.CylinderGeometry(.05,.06,1.3,8),woodMat); rail.position.set(x,.8,0); l.add(rail); });
+      for(let i=0;i<3;i++){ const rg=new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,.9,6),woodMat); rg.rotation.z=Math.PI/2; rg.position.set(0,.35+i*.35,0); l.add(rg); }
+      l.position.set(0,.3,0); l.rotation.z=-.12; g.add(l);
+      g.position.set(-6.9,.27,4.9); model.add(g); detailObjects.push(g);
+    }
+    addKiva();
+
     const ladder=new THREE.Group();
     [-.48,.48].forEach(x=>{const rail=new THREE.Mesh(new THREE.CylinderGeometry(.085,.1,4.05,10),woodMat);rail.position.set(x,2.15,0);ladder.add(rail);});
     for(let i=0;i<5;i++){const rung=new THREE.Mesh(new THREE.CylinderGeometry(.065,.075,1.08,10),woodMat);rung.rotation.z=Math.PI/2;rung.position.set(0,.58+i*.78,0);ladder.add(rung);}ladder.position.set(4.25,0,-2.05);ladder.rotation.x=-.11;ladder.rotation.z=-.06;model.add(ladder);detailObjects.push(ladder);
@@ -261,118 +400,174 @@ async function init3D(){
     function view(kind){if(kind==='front')camera.position.set(17,11,19);if(kind==='side')camera.position.set(-21,9,8);if(kind==='top')camera.position.set(7,25,8);controls.target.set(.5,2.1,0);controls.update()}
     function resize(){const w=Math.max(280,wrap.clientWidth),h=Math.max(330,wrap.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
     const ro=new ResizeObserver(resize);ro.observe(wrap);resize();
+
+    function setTimeOfDay(name){
+      if(!TIMES[name]) return;
+      targetTime=TIMES[name];
+      $$('.time-btn').forEach(b=>b.classList.toggle('active',b.dataset.time===name));
+    }
+
+    /* --- Guided tour --- */
+    const TOUR=[
+      {cam:[17,11,19],tgt:[.5,2.1,0],cap:'Welcome to Pueblo Builder Lab! Drag to rotate, and scroll or pinch to zoom.'},
+      {cam:[20,6,17],tgt:[.5,1.4,0],cap:'Here is the wide main room — a strong base for everything stacked above it.'},
+      {cam:[-21,9,8],tgt:[.5,2.1,0],cap:'From the side you can see the stepped, pyramid-like shape of the pueblo.'},
+      {cam:[7,24,9],tgt:[.5,2.1,0],cap:'From above, the flat roof terraces are easy to spot.'},
+      {cam:[16,10,-18],tgt:[.5,2.2,0],cap:'The vigas and ladder show how people reached each roof level.'}
+    ];
+    let tourIndex=-1, tourTimer=null, tourTargetCam=null, tourTargetTgt=null;
+    function showCaption(txt){ const c=$('#tourCaption'); if(c){ c.textContent=txt; c.hidden=false; } }
+    function hideCaption(){ const c=$('#tourCaption'); if(c) c.hidden=true; }
+    function setTourTarget(i){ tourTargetCam=new THREE.Vector3(...TOUR[i].cam); tourTargetTgt=new THREE.Vector3(...TOUR[i].tgt); }
+    function startTour(){
+      if(tourIndex>=0) return;
+      autoRotate=false; $('#autoRotate').classList.remove('active'); $('#autoRotate').textContent='🔁 Auto';
+      tourIndex=0; setTourTarget(0); showCaption(TOUR[0].cap); speak(TOUR[0].cap);
+      $('#tourBtn').textContent='⏹ Stop tour';
+      tourTimer=setInterval(()=>{
+        tourIndex++;
+        if(tourIndex>=TOUR.length){ stopTour(); return; }
+        setTourTarget(tourIndex); showCaption(TOUR[tourIndex].cap); speak(TOUR[tourIndex].cap);
+      },5200);
+    }
+    function stopTour(){ clearInterval(tourTimer); tourTimer=null; tourIndex=-1; tourTargetCam=null; tourTargetTgt=null; hideCaption(); $('#tourBtn').textContent='🎬 Take a tour'; }
+    function toggleTour(){ if(tourIndex>=0) stopTour(); else startTour(); }
+
     function updateLabels(){if(!showLabels)return;pieces.forEach(p=>{const m=clayMeshes.get(p.id),v=m.position.clone();v.y+=p.scale[1]*.65;model.localToWorld(v);v.project(camera);const x=(v.x*.5+.5)*wrap.clientWidth,y=(-v.y*.5+.5)*wrap.clientHeight;const l=labels.get(p.id);l.style.left=`${x}px`;l.style.top=`${y}px`;l.style.opacity=(v.z>-1&&v.z<1&&m.visible)?'1':'0';});}
-    let raf;function loop(){controls.update();if(autoRotate)model.rotation.y+=.004;updateLabels();renderer.render(scene,camera);raf=requestAnimationFrame(loop)}loop();
-    sceneApi={setExplode,setProgress,setClay,setCore,setLabels,highlight,view,resize};
+    function updateSky(){
+      if(!targetTime) return;
+      const k=.06;
+      curSky.lerp(new THREE.Color(targetTime.sky),k); curFog.lerp(new THREE.Color(targetTime.fog),k); scene.fog.color.copy(curFog);
+      curSunPos.lerp(new THREE.Vector3(...targetTime.sun),k);
+      curSunInt+=(targetTime.sunInt-curSunInt)*k; curHemi+=(targetTime.hemi-curHemi)*k;
+      curStars+=(targetTime.stars-curStars)*k; curMoon+=(targetTime.moon-curMoon)*k;
+      sun.position.copy(curSunPos); sun.intensity=curSunInt; sun.color.set(targetTime.sunColor);
+      hemi.intensity=curHemi; starMat.opacity=curStars; moon.material.opacity=curMoon; moon.visible=curMoon>.05;
+    }
+    let raf;function loop(){
+      controls.update();
+      if(tourTargetCam){ camera.position.lerp(tourTargetCam,.045); controls.target.lerp(tourTargetTgt,.045); }
+      else if(autoRotate) model.rotation.y+=.004;
+      updateSky(); updateLabels();
+      renderer.render(scene,camera);
+      raf=requestAnimationFrame(loop);
+    }loop();
+    sceneApi={setExplode,setProgress,setClay,setCore,setLabels,highlight,view,resize,setTimeOfDay,toggleTour,startTour,stopTour};
     loading.remove();updateExplode();updateProgress();highlight(selectedPiece);setLabels(true);
+
+    /* restore saved time-of-day */
+    let savedTime='day'; try{ savedTime=localStorage.getItem('pb_time')||'day'; }catch(e){}
+    if(savedTime!=='day') setTimeOfDay(savedTime);
   }catch(err){console.error(err);loading.remove();canvas.hidden=true;fallback.hidden=false;}
+}
+
+/* ===== Build Mode (Fortnite-style) ===== */
+const BUILD_ORDER=['base','main','left','right','upper','top'];
+const BUILD_COST={base:{cardboard:1},main:{cardboard:1,clay:1},left:{cardboard:1,clay:1},right:{cardboard:1,clay:1},upper:{cardboard:1,clay:1},top:{cardboard:1,clay:1}};
+const BUILD_START={cardboard:6,clay:5,twigs:3,sand:2};
+const BUILD_POS={base:[0,-.23,.8],main:[0,1,0],left:[-5.5,1,.15],right:[6,1,.08],upper:[1,3.05,.15],top:[1.4,5.1,.2]};
+const BUILD_SCALE={base:[13.5,.38,16.5],main:[8,2,3],left:[3,2,3],right:[4,2,3],upper:[6,2,3],top:[4,2,3]};
+
+function initBuildMode(){
+  const wrap=$('#buildViewerWrap'), canvas=$('#buildScene'), loading=$('#buildLoading');
+  const THREE=window.THREE, OrbitControls=window.THREE?.OrbitControls;
+  if(!THREE || !OrbitControls){ loading.textContent='3D not available'; return; }
+  const materials={...BUILD_START};
+  const placed=new Set();
+  let selected=null;
+  let sceneApi=null;
+
+  function renderHud(){
+    $('#matCardboard').textContent=materials.cardboard;
+    $('#matClay').textContent=materials.clay;
+    $('#matTwigs').textContent=materials.twigs;
+    $('#matSand').textContent=materials.sand;
+    $('#buildProgress').textContent=`Placed ${placed.size} / ${BUILD_ORDER.length}`;
+    $$('.build-slot').forEach(s=>{
+      const p=s.dataset.piece;
+      s.classList.toggle('placed',placed.has(p));
+      s.classList.toggle('selected',selected===p);
+      const next=BUILD_ORDER[placed.size];
+      s.disabled = placed.has(p) || (p!==next);
+    });
+    $('#buildPlace').disabled = !selected || placed.has(selected) || selected!==BUILD_ORDER[placed.size];
   }
 
-  /* ===== Build Mode (Fortnite-style) ===== */
-  const BUILD_ORDER=['base','main','left','right','upper','top'];
-  const BUILD_COST={base:{cardboard:1},main:{cardboard:1,clay:1},left:{cardboard:1,clay:1},right:{cardboard:1,clay:1},upper:{cardboard:1,clay:1},top:{cardboard:1,clay:1}};
-  const BUILD_START={cardboard:6,clay:5,twigs:3,sand:2};
-  const BUILD_POS={base:[0,-.23,.8],main:[0,1,0],left:[-5.5,1,.15],right:[6,1,.08],upper:[1,3.05,.15],top:[1.4,5.1,.2]};
-  const BUILD_SCALE={base:[13.5,.38,16.5],main:[8,2,3],left:[3,2,3],right:[4,2,3],upper:[6,2,3],top:[4,2,3]};
+  function showMsg(txt){
+    const old=$('.build-msg'); if(old) old.remove();
+    const el=document.createElement('div'); el.className='build-msg'; el.textContent=txt;
+    wrap.appendChild(el); setTimeout(()=>el.remove(),1400);
+  }
 
-  function initBuildMode(){
-    const wrap=$('#buildViewerWrap'), canvas=$('#buildScene'), loading=$('#buildLoading');
-    const THREE=window.THREE, OrbitControls=window.THREE?.OrbitControls;
-    if(!THREE || !OrbitControls){ loading.textContent='3D not available'; return; }
-    const materials={...BUILD_START};
-    const placed=new Set();
-    let selected=null;
-    let sceneApi=null;
+  function placeSelected(){
+    if(!selected || placed.has(selected) || selected!==BUILD_ORDER[placed.size]) return;
+    const cost=BUILD_COST[selected];
+    for(const k in cost){ if(materials[k]<cost[k]){ showMsg('Not enough materials!'); return; } }
+    for(const k in cost) materials[k]-=cost[k];
+    placed.add(selected);
+    sceneApi?.setPlaced(selected,true);
+    renderHud();
+    showMsg(selected==='base'?'Base down!':`${selected} placed!`);
+    if(placed.size===BUILD_ORDER.length){ setTimeout(()=>{celebrate();showMsg('🏆 Pueblo complete!');},400); }
+    selected=null; renderHud();
+  }
 
-    function renderHud(){
-      $('#matCardboard').textContent=materials.cardboard;
-      $('#matClay').textContent=materials.clay;
-      $('#matTwigs').textContent=materials.twigs;
-      $('#matSand').textContent=materials.sand;
-      $('#buildProgress').textContent=`Placed ${placed.size} / ${BUILD_ORDER.length}`;
-      $$('.build-slot').forEach(s=>{
+  try{
+    const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    const scene=new THREE.Scene(); scene.background=new THREE.Color(0x1c130b); scene.fog=new THREE.Fog(0x1c130b,30,50);
+    const camera=new THREE.PerspectiveCamera(38,1,.1,100); camera.position.set(17,11,19);
+    const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.target.set(.5,2.1,0); controls.minDistance=10; controls.maxDistance=34; controls.maxPolarAngle=Math.PI*.49;
+    scene.add(new THREE.HemisphereLight(0xfffbef,0x635342,2.0));
+    const sun=new THREE.DirectionalLight(0xffffff,2.4); sun.position.set(-8,18,11); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); scene.add(sun);
+    const rim=new THREE.DirectionalLight(0xffd9b3,.6); rim.position.set(12,7,-12); scene.add(rim);
+
+    const clayTex=makeTexture(256,'b36b43',{speckles:1500,variance:.18,strata:true,r:5});
+    const sandTex=makeTexture(256,'c8ab78',{speckles:1800,variance:.12,r:3}); sandTex.repeat.set(7,8);
+    const clayMat=new THREE.MeshStandardMaterial({map:clayTex,roughness:.98});
+    const ghostMat=new THREE.MeshStandardMaterial({color:0xffd27a,roughness:.6,transparent:true,opacity:.35,emissive:0xffd27a,emissiveIntensity:.15});
+    const sandMat=new THREE.MeshStandardMaterial({map:sandTex,roughness:1});
+    const meshes={};
+
+    function makeMesh(p){
+      const isBase=p==='base';
+      const mat=isBase?sandMat:clayMat;
+      const m=new THREE.Mesh(new THREE.BoxGeometry(...BUILD_SCALE[p]),mat);
+      m.position.set(...BUILD_POS[p]); m.castShadow=true; m.receiveShadow=true;
+      m.visible=false; scene.add(m); meshes[p]=m;
+      return m;
+    }
+    BUILD_ORDER.forEach(makeMesh);
+
+    function setPlaced(p,on){
+      const m=meshes[p]; if(!m) return;
+      m.visible=on;
+      if(on){ m.material= p==='base'?sandMat:clayMat; }
+    }
+    function setGhost(p){
+      BUILD_ORDER.forEach(k=>{ const m=meshes[k]; if(m && !placed.has(k)){ m.visible=(k===p); if(k===p) m.material=ghostMat; } });
+    }
+    function clearGhost(){ BUILD_ORDER.forEach(k=>{ const m=meshes[k]; if(m && !placed.has(k)) m.visible=false; }); }
+
+    function resize(){ const w=Math.max(280,wrap.clientWidth),h=Math.max(330,wrap.clientHeight); renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+    const ro=new ResizeObserver(resize); ro.observe(wrap); resize();
+    let raf; function loop(){ controls.update(); renderer.render(scene,camera); raf=requestAnimationFrame(loop); } loop();
+    sceneApi={setPlaced,setGhost,clearGhost,resize};
+    loading.remove();
+
+    $$('.build-slot').forEach(s=>{
+      s.addEventListener('click',()=>{
         const p=s.dataset.piece;
-        s.classList.toggle('placed',placed.has(p));
-        s.classList.toggle('selected',selected===p);
-        const next=BUILD_ORDER[placed.size];
-        s.disabled = placed.has(p) || (p!==next);
+        if(placed.has(p) || p!==BUILD_ORDER[placed.size]) return;
+        selected = (selected===p)?null:p;
+        if(selected) sceneApi.setGhost(selected); else sceneApi.clearGhost();
+        renderHud();
       });
-      $('#buildPlace').disabled = !selected || placed.has(selected) || selected!==BUILD_ORDER[placed.size];
-    }
+    });
+    $('#buildPlace').addEventListener('click',placeSelected);
+    renderHud();
+  }catch(err){ console.error(err); loading.textContent='3D could not start'; }
+}
 
-    function showMsg(txt){
-      const old=$('.build-msg'); if(old) old.remove();
-      const el=document.createElement('div'); el.className='build-msg'; el.textContent=txt;
-      wrap.appendChild(el); setTimeout(()=>el.remove(),1400);
-    }
-
-    function placeSelected(){
-      if(!selected || placed.has(selected) || selected!==BUILD_ORDER[placed.size]) return;
-      const cost=BUILD_COST[selected];
-      for(const k in cost){ if(materials[k]<cost[k]){ showMsg('Not enough materials!'); return; } }
-      for(const k in cost) materials[k]-=cost[k];
-      placed.add(selected);
-      sceneApi?.setPlaced(selected,true);
-      renderHud();
-      showMsg(selected==='base'?'Base down!':`${selected} placed!`);
-      if(placed.size===BUILD_ORDER.length){ setTimeout(()=>{celebrate();showMsg('🏆 Pueblo complete!');},400); }
-      selected=null; renderHud();
-    }
-
-    try{
-      const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-      renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-      const scene=new THREE.Scene(); scene.background=new THREE.Color(0x1c130b); scene.fog=new THREE.Fog(0x1c130b,30,50);
-      const camera=new THREE.PerspectiveCamera(38,1,.1,100); camera.position.set(17,11,19);
-      const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.target.set(.5,2.1,0); controls.minDistance=10; controls.maxDistance=34; controls.maxPolarAngle=Math.PI*.49;
-      scene.add(new THREE.HemisphereLight(0xfffbef,0x635342,2.0));
-      const sun=new THREE.DirectionalLight(0xffffff,2.4); sun.position.set(-8,18,11); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); scene.add(sun);
-      const rim=new THREE.DirectionalLight(0xffd9b3,.6); rim.position.set(12,7,-12); scene.add(rim);
-
-      const clayMat=new THREE.MeshStandardMaterial({color:0xb36b43,roughness:.98});
-      const ghostMat=new THREE.MeshStandardMaterial({color:0xffd27a,roughness:.6,transparent:true,opacity:.35,emissive:0xffd27a,emissiveIntensity:.15});
-      const sandMat=new THREE.MeshStandardMaterial({color:0xc8ab78,roughness:1});
-      const meshes={};
-
-      function makeMesh(p){
-        const isBase=p==='base';
-        const mat=isBase?sandMat:clayMat;
-        const m=new THREE.Mesh(new THREE.BoxGeometry(...BUILD_SCALE[p]),mat);
-        m.position.set(...BUILD_POS[p]); m.castShadow=true; m.receiveShadow=true;
-        m.visible=false; scene.add(m); meshes[p]=m;
-        return m;
-      }
-      BUILD_ORDER.forEach(makeMesh);
-
-      function setPlaced(p,on){
-        const m=meshes[p]; if(!m) return;
-        m.visible=on;
-        if(on){ m.material= p==='base'?sandMat:clayMat; }
-      }
-      function setGhost(p){
-        BUILD_ORDER.forEach(k=>{ const m=meshes[k]; if(m && !placed.has(k)){ m.visible=(k===p); if(k===p) m.material=ghostMat; } });
-      }
-      function clearGhost(){ BUILD_ORDER.forEach(k=>{ const m=meshes[k]; if(m && !placed.has(k)) m.visible=false; }); }
-
-      function resize(){ const w=Math.max(280,wrap.clientWidth),h=Math.max(330,wrap.clientHeight); renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
-      const ro=new ResizeObserver(resize); ro.observe(wrap); resize();
-      let raf; function loop(){ controls.update(); renderer.render(scene,camera); raf=requestAnimationFrame(loop); } loop();
-      sceneApi={setPlaced,setGhost,clearGhost,resize};
-      loading.remove();
-
-      $$('.build-slot').forEach(s=>{
-        s.addEventListener('click',()=>{
-          const p=s.dataset.piece;
-          if(placed.has(p) || p!==BUILD_ORDER[placed.size]) return;
-          selected = (selected===p)?null:p;
-          if(selected) sceneApi.setGhost(selected); else sceneApi.clearGhost();
-          renderHud();
-        });
-      });
-      $('#buildPlace').addEventListener('click',placeSelected);
-      renderHud();
-    }catch(err){ console.error(err); loading.textContent='3D could not start'; }
-  }
-
-  initTabs();initPieceTray();initSteps();initBuilderControls();initQuiz();initLearnSpeak();init3D();initBuildMode();
+initTabs();initPieceTray();initSteps();initBuilderControls();initQuiz();initLearnSpeak();init3D();initBuildMode();

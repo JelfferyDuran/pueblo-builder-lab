@@ -12,3 +12,5 @@ node_modules/
 # Local env / secrets
 .env
 .env.*
+
+.vercel
