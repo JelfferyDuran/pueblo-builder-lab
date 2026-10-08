@@ -39,6 +39,109 @@ let quizDone = false;
 let sceneApi = null;
 let autoRotate = false;
 
+/* ============ Builder Quest rewards ============ */
+const QUEST_STORAGE='pbq_rewards_v1';
+const RANKS=[
+  {name:'Adobe Apprentice',min:0},
+  {name:'Foundation Builder',min:100},
+  {name:'Pueblo Planner',min:220},
+  {name:'Terrace Architect',min:380},
+  {name:'Master Pueblo Builder',min:560}
+];
+const BADGES=[
+  {id:'foundation',icon:'🧱',name:'Foundation Finder'},
+  {id:'stacker',icon:'🏗️',name:'Stacking Architect'},
+  {id:'clay',icon:'👐',name:'Clay Crafter'},
+  {id:'scholar',icon:'🏜️',name:'Pueblo Scholar'},
+  {id:'master',icon:'🏆',name:'Pueblo Builder'}
+];
+let rewardState={xp:0,stars:0,streak:0,badges:[],claimed:{},completedSteps:[],sound:true};
+
+function loadRewardState(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(QUEST_STORAGE)||'null');
+    if(saved&&typeof saved==='object') rewardState={...rewardState,...saved,claimed:{...(saved.claimed||{})},badges:[...(saved.badges||[])],completedSteps:[...(saved.completedSteps||[])]};
+  }catch(e){}
+}
+function saveRewardState(){try{localStorage.setItem(QUEST_STORAGE,JSON.stringify(rewardState))}catch(e){}}
+function rankForXp(xp){let rank=RANKS[0];for(const r of RANKS)if(xp>=r.min)rank=r;return rank}
+function nextRank(xp){return RANKS.find(r=>r.min>xp)||null}
+function playRewardTone(kind='star'){
+  if(!rewardState.sound) return;
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    const ac=new AC(),gain=ac.createGain(),osc=ac.createOscillator();gain.connect(ac.destination);osc.connect(gain);
+    const now=ac.currentTime;osc.type=kind==='badge'?'triangle':'sine';osc.frequency.setValueAtTime(kind==='badge'?440:620,now);osc.frequency.exponentialRampToValueAtTime(kind==='badge'?880:940,now+.18);
+    gain.gain.setValueAtTime(.0001,now);gain.gain.exponentialRampToValueAtTime(.11,now+.02);gain.gain.exponentialRampToValueAtTime(.0001,now+.32);
+    osc.start(now);osc.stop(now+.34);setTimeout(()=>ac.close().catch(()=>{}),500);
+  }catch(e){}
+}
+function confettiBurst(count=28){
+  if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+  const layer=$('#confettiLayer');if(!layer)return;
+  const glyphs=['#f2b84b','#c46f43','#6f815d','#e9d7b2','#8eb0be'];
+  for(let i=0;i<count;i++){
+    const bit=document.createElement('i');bit.className='confetti-bit';bit.style.left=(12+Math.random()*76)+'%';bit.style.background=glyphs[i%glyphs.length];bit.style.animationDelay=(Math.random()*.16)+'s';bit.style.transform='rotate('+(Math.random()*180)+'deg)';layer.appendChild(bit);setTimeout(()=>bit.remove(),1700);
+  }
+}
+function showRewardToast(title,detail,badge){
+  const t=$('#rewardToast');if(!t)return;
+  t.hidden=false;t.classList.remove('show');void t.offsetWidth;
+  t.innerHTML='<span class="reward-big">'+title+'</span><small>'+detail+'</small>'+(badge?'<span class="badge-pop">'+badge.icon+' '+badge.name+' unlocked</span>':'');
+  t.classList.add('show');setTimeout(()=>{t.classList.remove('show');t.hidden=true},1900);
+}
+function unlockBadge(id){
+  if(rewardState.badges.includes(id)) return null;
+  const badge=BADGES.find(b=>b.id===id);if(!badge)return null;
+  rewardState.badges.push(id);playRewardTone('badge');return badge;
+}
+function evaluateBadges(){
+  let newest=null;
+  if(rewardState.claimed['build-base']) newest=unlockBadge('foundation')||newest;
+  const builtCount=Object.keys(rewardState.claimed).filter(k=>k.startsWith('build-')).length;
+  if(builtCount>=4)newest=unlockBadge('stacker')||newest;
+  if(rewardState.completedSteps.includes(5))newest=unlockBadge('clay')||newest;
+  const quizCount=Object.keys(rewardState.claimed).filter(k=>k.startsWith('quiz-')).length;
+  if(quizCount>=4)newest=unlockBadge('scholar')||newest;
+  if(rewardState.completedSteps.length>=8 && builtCount>=6)newest=unlockBadge('master')||newest;
+  return newest;
+}
+function updateRewardUI(){
+  const rank=rankForXp(rewardState.xp),next=nextRank(rewardState.xp);
+  $('#builderRank') && ($('#builderRank').textContent=rank.name);
+  $('#starCount') && ($('#starCount').textContent=String(rewardState.stars));
+  $('#streakCount') && ($('#streakCount').textContent=String(rewardState.streak));
+  $('#badgeCount') && ($('#badgeCount').textContent=String(rewardState.badges.length));
+  const rankStart=rank.min,rankEnd=next?next.min:Math.max(rankStart+100,rewardState.xp);
+  const pct=next?Math.max(0,Math.min(100,((rewardState.xp-rankStart)/(rankEnd-rankStart))*100)):100;
+  if($('#xpFill'))$('#xpFill').style.width=pct+'%';
+  if($('#xpText'))$('#xpText').textContent=next?rewardState.xp+' XP • '+(next.min-rewardState.xp)+' XP to '+next.name:rewardState.xp+' XP • Top rank reached!';
+  if($('#soundToggle')){$('#soundToggle').textContent=rewardState.sound?'🔊 Rewards on':'🔇 Rewards off';$('#soundToggle').setAttribute('aria-pressed',String(rewardState.sound));}
+  $('.quest-dot').forEach((dot,i)=>{dot.classList.toggle('done',rewardState.completedSteps.includes(i));dot.classList.toggle('current',i===currentStep)});
+  const s=steps[currentStep];if($('#questTitle'))$('#questTitle').textContent=s?.title||'Build your Pueblo';
+  if($('#nextReward'))$('#nextReward').textContent=rewardState.completedSteps.includes(currentStep)?'Step reward earned ✓':'+15 XP ⭐';
+  if($('#completeStep')){$('#completeStep').classList.toggle('completed',rewardState.completedSteps.includes(currentStep));$('#completeStep').textContent=rewardState.completedSteps.includes(currentStep)?'✓ STEP COMPLETE':'⭐ I BUILT THIS!';}
+}
+function grantReward(key,{xp=10,stars=1,streak=true,label='Great build!',detail='Keep going.'}={}){
+  if(rewardState.claimed[key]){showRewardToast('Already earned ✓','That reward is safely saved.');return false;}
+  rewardState.claimed[key]=Date.now();rewardState.xp+=xp;rewardState.stars+=stars;if(streak)rewardState.streak+=1;
+  const badge=evaluateBadges();saveRewardState();updateRewardUI();playRewardTone(badge?'badge':'star');confettiBurst(badge?42:24);
+  showRewardToast(label,'+'+xp+' XP'+(stars?' • +'+stars+' ⭐':'')+' • '+detail,badge);return true;
+}
+function initRewards(){
+  loadRewardState();
+  const dots=$('#questDots');if(dots&&!dots.children.length){steps.forEach((_,i)=>{const d=document.createElement('span');d.className='quest-dot';d.title='Build step '+(i+1);dots.appendChild(d)})}
+  $('#soundToggle')?.addEventListener('click',()=>{rewardState.sound=!rewardState.sound;saveRewardState();updateRewardUI();if(rewardState.sound)playRewardTone('star')});
+  $('#rewardReset')?.addEventListener('click',()=>{if(!confirm('Reset stars, XP, badges, and completed build steps?'))return;rewardState={xp:0,stars:0,streak:0,badges:[],claimed:{},completedSteps:[],sound:true};saveRewardState();updateRewardUI();showRewardToast('Quest reset','Fresh start — build it again!')});
+  $('#completeStep')?.addEventListener('click',()=>{
+    if(rewardState.completedSteps.includes(currentStep)){showRewardToast('Step already complete ✓','Choose the next step when you are ready.');return;}
+    rewardState.completedSteps.push(currentStep);rewardState.completedSteps.sort((a,b)=>a-b);saveRewardState();
+    grantReward('step-'+currentStep,{xp:15,stars:1,label:'Step '+(currentStep+1)+' complete!',detail:'Real-world building progress saved.'});
+    evaluateBadges();saveRewardState();updateRewardUI();
+  });
+  updateRewardUI();
+}
+
 /* ---------- Read-aloud (free browser speech) ---------- */
 function speak(text){
   if(!('speechSynthesis' in window)){ try{new (window.AudioContext||window.webkitAudioContext)}catch(e){return;} }
@@ -53,6 +156,7 @@ function celebrate(){
   const el=document.createElement('div'); el.className='celebrate'; el.setAttribute('aria-hidden','true');
   el.innerHTML='🎉';
   document.body.appendChild(el); requestAnimationFrame(()=>el.classList.add('boom'));
+  confettiBurst(34); playRewardTone('star');
   setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 1600);
 }
 
@@ -164,7 +268,8 @@ function setStep(i){
   $('#stepWhy').textContent=s.why;
   $('#prevStep').disabled=currentStep===0;
   $('#nextStep').disabled=currentStep===steps.length-1;
-  $$('.rail-step').forEach((b,j)=>b.classList.toggle('active',j===currentStep));
+  $('.rail-step').forEach((b,j)=>b.classList.toggle('active',j===currentStep));
+  updateRewardUI();
 }
 
 function updateExplode(){
@@ -235,7 +340,7 @@ function renderQuiz(){
       if(wrap.dataset.answered) return;
       wrap.dataset.answered='1';
       $$('.answer-btn',wrap).forEach(x=>x.disabled=true);
-      if(i===q.correct){ b.classList.add('correct'); quizScore++; $('#quizScore').textContent=String(quizScore); $('#quizFeedback').textContent=q.explain; speak(q.explain); }
+      if(i===q.correct){ b.classList.add('correct'); quizScore++; $('#quizScore').textContent=String(quizScore); $('#quizFeedback').textContent=q.explain; speak(q.explain); grantReward('quiz-'+quizIndex,{xp:10,stars:1,streak:false,label:'Knowledge star!',detail:'You understood the Pueblo fact.'}); }
       else { b.classList.add('wrong'); wrap.children[q.correct].classList.add('correct'); $('#quizFeedback').textContent='Not quite. The highlighted answer is the idea to remember.'; speak('Not quite. The highlighted answer is the one to remember.'); }
     }); wrap.appendChild(b);
   });
@@ -261,8 +366,10 @@ async function init3D(){
   const THREE=window.THREE, OrbitControls=window.THREE?.OrbitControls;
   if(!THREE || !OrbitControls){ console.error('THREE/OrbitControls not loaded'); loading.remove(); canvas.hidden=true; fallback.hidden=false; return; }
   try{
-    const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+    const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:'high-performance'});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    if('outputColorSpace' in renderer && THREE.SRGBColorSpace)renderer.outputColorSpace=THREE.SRGBColorSpace;
+    if(THREE.ACESFilmicToneMapping){renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;}
     const scene=new THREE.Scene();
     const camera=new THREE.PerspectiveCamera(38,1,.1,100);camera.position.set(17,11,19);
     const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.target.set(.5,2.1,0);controls.minDistance=10;controls.maxDistance=34;controls.maxPolarAngle=Math.PI*.49;
@@ -300,8 +407,8 @@ async function init3D(){
     const woodTex=makeTexture(128,'5c3c27',{grain:true,speckles:300,variance:.1,r:2});
 
     const sandMat=new THREE.MeshStandardMaterial({map:sandTex,roughness:1});
-    const clayMat=new THREE.MeshStandardMaterial({map:clayTex,roughness:.98});
-    const claySelected=new THREE.MeshStandardMaterial({map:clayTex,roughness:.92,emissive:0x2f180d,emissiveIntensity:.2});
+    const clayMat=new THREE.MeshStandardMaterial({map:clayTex,bumpMap:clayTex,bumpScale:.075,roughness:1,metalness:0});
+    const claySelected=new THREE.MeshStandardMaterial({map:clayTex,bumpMap:clayTex,bumpScale:.09,roughness:.96,metalness:0,emissive:0x2f180d,emissiveIntensity:.18});
     const coreMat=new THREE.MeshStandardMaterial({color:0xb18457,roughness:.95,transparent:true,opacity:.8});
     const woodMat=new THREE.MeshStandardMaterial({map:woodTex,roughness:1});
     const darkMat=new THREE.MeshStandardMaterial({color:0x1d1713,roughness:1});
@@ -313,11 +420,19 @@ async function init3D(){
     const clayMeshes=new Map(), coreMeshes=new Map(), labels=new Map();
 
     function roundedBoxGeometry(w,h,d){
-      const g=new THREE.BoxGeometry(w,h,d,2,2,2);
+      const g=new THREE.BoxGeometry(w,h,d,8,4,8);
       const pos=g.attributes.position;
       for(let i=0;i<pos.count;i++){
-        const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
-        pos.setXYZ(i,x*(1-.012*Math.abs(y)),y,z*(1-.012*Math.abs(y)));
+        let x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+        const nx=Math.abs(x)/(w/2), nz=Math.abs(z)/(d/2);
+        const corner=Math.max(0,Math.min(nx,nz)-.72)/.28;
+        const taper=1-.018*((y+h/2)/h);
+        const wave=Math.sin((x*2.37)+(y*3.11)+(z*1.73))*0.018;
+        x*=taper*(1-corner*.045); z*=taper*(1-corner*.045);
+        if(nx>.98)x+=Math.sign(x)*wave;
+        if(nz>.98)z+=Math.sign(z)*wave;
+        if(Math.abs(y)>.98*(h/2))y+=wave*.35;
+        pos.setXYZ(i,x,y,z);
       }
       g.computeVertexNormals();return g;
     }
@@ -337,6 +452,8 @@ async function init3D(){
     const doorsWindows=[];
     function opening(x,y,z,w,h){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,.09),darkMat);m.position.set(x,y,z);model.add(m);doorsWindows.push(m);return m;}
     opening(.1,.72,-1.545,1.25,1.45);opening(-2.5,1.15,-1.545,.68,.68);opening(2.55,1.15,-1.545,.68,.68);opening(.15,3.22,-1.43,.68,.68);opening(2.15,5.22,-1.34,.68,.68);
+    const doorLintel=new THREE.Mesh(new THREE.CylinderGeometry(.12,.14,1.65,10),woodMat);doorLintel.rotation.z=Math.PI/2;doorLintel.position.set(.1,1.5,-1.66);doorLintel.castShadow=true;model.add(doorLintel);detailObjects.push(doorLintel);
+    [[-2.5,1.52,-1.64],[2.55,1.52,-1.64],[.15,3.59,-1.53],[2.15,5.59,-1.44]].forEach(([x,y,z])=>{const sill=new THREE.Mesh(new THREE.BoxGeometry(.82,.08,.18),clayMat);sill.position.set(x,y,z);sill.castShadow=true;model.add(sill);detailObjects.push(sill);});
 
     /* roof parapets (low adobe walls around each flat roof) */
     function addParapets(){
@@ -473,7 +590,10 @@ function initBuildMode(){
   const THREE=window.THREE, OrbitControls=window.THREE?.OrbitControls;
   if(!THREE || !OrbitControls){ loading.textContent='3D not available'; return; }
   const materials={...BUILD_START};
-  const placed=new Set();
+  let savedPlaced=[];try{savedPlaced=JSON.parse(localStorage.getItem('pbq_buildPlaced')||'[]')}catch(e){}
+  const validPrefix=[];for(const p of BUILD_ORDER){if(savedPlaced.includes(p))validPrefix.push(p);else break;}
+  const placed=new Set(validPrefix);
+  validPrefix.forEach(p=>{const cost=BUILD_COST[p];for(const k in cost)materials[k]=Math.max(0,materials[k]-cost[k]);});
   let selected=null;
   let sceneApi=null;
 
@@ -483,11 +603,21 @@ function initBuildMode(){
     $('#matTwigs').textContent=materials.twigs;
     $('#matSand').textContent=materials.sand;
     $('#buildProgress').textContent=`Placed ${placed.size} / ${BUILD_ORDER.length}`;
-    $$('.build-slot').forEach(s=>{
+    const next=BUILD_ORDER[placed.size];
+    const missionCopy={
+      base:['Place the foundation board','Start low and wide. A strong base keeps every level above it stable.'],
+      main:['Build the main room','The widest lower room becomes the structural anchor.'],
+      left:['Add the left room','Connected rooms widen the first level and create support.'],
+      right:['Add the right room','Balance both sides before building upward.'],
+      upper:['Stack the second story','Keep most of the upper room directly over its supports.'],
+      top:['Crown the Pueblo','The smallest room goes highest to keep the form balanced.']
+    };
+    if($('#buildMissionTitle'))$('#buildMissionTitle').textContent=next?missionCopy[next][0]:'Pueblo complete!';
+    if($('#buildMissionHint'))$('#buildMissionHint').textContent=next?missionCopy[next][1]:'Excellent work — inspect your finished structure from every angle.';
+    $('.build-slot').forEach(s=>{
       const p=s.dataset.piece;
       s.classList.toggle('placed',placed.has(p));
       s.classList.toggle('selected',selected===p);
-      const next=BUILD_ORDER[placed.size];
       s.disabled = placed.has(p) || (p!==next);
     });
     $('#buildPlace').disabled = !selected || placed.has(selected) || selected!==BUILD_ORDER[placed.size];
@@ -504,18 +634,23 @@ function initBuildMode(){
     const cost=BUILD_COST[selected];
     for(const k in cost){ if(materials[k]<cost[k]){ showMsg('Not enough materials!'); return; } }
     for(const k in cost) materials[k]-=cost[k];
-    placed.add(selected);
-    sceneApi?.setPlaced(selected,true);
+    const justPlaced=selected;
+    placed.add(justPlaced);
+    try{localStorage.setItem('pbq_buildPlaced',JSON.stringify([...placed]))}catch(e){}
+    sceneApi?.setPlaced(justPlaced,true);
     renderHud();
-    showMsg(selected==='base'?'Base down!':`${selected} placed!`);
-    if(placed.size===BUILD_ORDER.length){ setTimeout(()=>{celebrate();showMsg('🏆 Pueblo complete!');},400); }
+    showMsg(justPlaced==='base'?'Foundation locked in!':`${justPlaced} snapped into place!`);
+    grantReward('build-'+justPlaced,{xp:25,stars:1,label:justPlaced==='base'?'Foundation star!':'Perfect placement!',detail:'Your Pueblo is getting stronger.'});
+    if(placed.size===BUILD_ORDER.length){ setTimeout(()=>{celebrate();showMsg('🏆 Pueblo complete!');const badge=unlockBadge('master');saveRewardState();updateRewardUI();if(badge)showRewardToast('Master build complete!','Every structural piece is in place.',badge);},450); }
     selected=null; renderHud();
   }
 
   try{
-    const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+    const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:'high-performance'});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    if('outputColorSpace' in renderer && THREE.SRGBColorSpace)renderer.outputColorSpace=THREE.SRGBColorSpace;
+    if(THREE.ACESFilmicToneMapping){renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;}
     const scene=new THREE.Scene(); scene.background=new THREE.Color(0x1c130b); scene.fog=new THREE.Fog(0x1c130b,30,50);
     const camera=new THREE.PerspectiveCamera(38,1,.1,100); camera.position.set(17,11,19);
     const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.target.set(.5,2.1,0); controls.minDistance=10; controls.maxDistance=34; controls.maxPolarAngle=Math.PI*.49;
@@ -525,7 +660,7 @@ function initBuildMode(){
 
     const clayTex=makeTexture(256,'b36b43',{speckles:1500,variance:.18,strata:true,r:5});
     const sandTex=makeTexture(256,'c8ab78',{speckles:1800,variance:.12,r:3}); sandTex.repeat.set(7,8);
-    const clayMat=new THREE.MeshStandardMaterial({map:clayTex,roughness:.98});
+    const clayMat=new THREE.MeshStandardMaterial({map:clayTex,bumpMap:clayTex,bumpScale:.07,roughness:1});
     const ghostMat=new THREE.MeshStandardMaterial({color:0xffd27a,roughness:.6,transparent:true,opacity:.35,emissive:0xffd27a,emissiveIntensity:.15});
     const sandMat=new THREE.MeshStandardMaterial({map:sandTex,roughness:1});
     const meshes={};
@@ -554,9 +689,10 @@ function initBuildMode(){
     const ro=new ResizeObserver(resize); ro.observe(wrap); resize();
     let raf; function loop(){ controls.update(); renderer.render(scene,camera); raf=requestAnimationFrame(loop); } loop();
     sceneApi={setPlaced,setGhost,clearGhost,resize};
+    validPrefix.forEach(p=>setPlaced(p,true));
     loading.remove();
 
-    $$('.build-slot').forEach(s=>{
+    $('.build-slot').forEach(s=>{
       s.addEventListener('click',()=>{
         const p=s.dataset.piece;
         if(placed.has(p) || p!==BUILD_ORDER[placed.size]) return;
@@ -570,4 +706,4 @@ function initBuildMode(){
   }catch(err){ console.error(err); loading.textContent='3D could not start'; }
 }
 
-initTabs();initPieceTray();initSteps();initBuilderControls();initQuiz();initLearnSpeak();init3D();initBuildMode();
+initRewards();initTabs();initPieceTray();initSteps();initBuilderControls();initQuiz();initLearnSpeak();init3D();initBuildMode();
